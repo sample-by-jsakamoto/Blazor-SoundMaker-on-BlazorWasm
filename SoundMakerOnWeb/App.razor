@@ -1,0 +1,117 @@
+﻿@using SoundMaker.Sounds
+@using SoundMaker.Sounds.Score
+@using SoundMaker.Sounds.SoundChannels
+@using SoundMaker.WaveFile
+
+@implements IAsyncDisposable
+
+@inject IJSRuntime JSRuntime
+
+<main>
+
+    <section>
+
+        <h1>Demonstration of the <a href="https://github.com/AutumnSky1010/SoundMaker" target="_blank">"SoundMaker"</a> on Blazor WebAssembly</h1>
+
+        <p>
+            <button @onclick="OnClickPlay">Generate Sound and Play</button>
+            <button @onclick="OnClickDownload">Generate Sound and Download</button>
+        </p>
+
+    </section>
+
+    <fotter>
+        GitHub repository of this app: <a href="https://github.com/sample-by-jsakamoto/Blazor-SoundMaker-on-BlazorWasm" target="_blank">
+            https://github.com/sample-by-jsakamoto/Blazor-SoundMaker-on-BlazorWasm
+        </a>
+    </fotter>
+
+</main>
+
+@code
+{
+    private IJSObjectReference? jsModule;
+
+    private async Task OnClickPlay()
+    {
+        var filePath = GenerateWavFile();
+        var wavBytes = System.IO.File.ReadAllBytes(filePath);
+        var jsModule = await GetJSModule();
+        await jsModule.InvokeVoidAsync("playWav", wavBytes);
+    }
+
+    private async Task OnClickDownload()
+    {
+        var filePath = GenerateWavFile();
+        var wavBytes = System.IO.File.ReadAllBytes(filePath);
+        await JSRuntime.InvokeDownloadAsync("sample.wav", "audio/x-wav", wavBytes);
+    }
+
+    private static string GenerateWavFile()
+    {
+        // サウンドの形式を作成する。
+        var soundFormat = new SoundFormat(SoundMaker.Sounds.SamplingFrequencyType.FourtyEightKHz, SoundMaker.Sounds.BitRateType.SixteenBit, SoundMaker.Sounds.ChannelType.Stereo);
+        var wave = MakeStereoWave(soundFormat);
+
+        // ファイルに書き込む。
+        var sound = new SoundWaveChunk(wave.GetBytes(soundFormat.BitRate));
+        var waveFileFormat = new FormatChunk(SoundMaker.WaveFile.SamplingFrequencyType.FourtyEightKHz, SoundMaker.WaveFile.BitRateType.SixteenBit, SoundMaker.WaveFile.ChannelType.Stereo);
+        var writer = new WaveWriter(waveFileFormat, sound);
+        var filePath = "/tmp/sample.wav";
+        writer.Write(filePath);
+
+        return filePath;
+    }
+
+
+    private static StereoWave MakeStereoWave(SoundFormat format)
+    {
+        // 一分間の四分音符の個数
+        var tempo = 100;
+
+        // まず、音のチャンネルを作成する必要がある。
+        // 現段階では矩形波、三角波に対応している。
+        var rightChannel = new SquareSoundChannel(tempo, format, SquareWaveRatio.Point25, PanType.Right);
+        var rightChannel2 = new SquareSoundChannel(tempo, format, SquareWaveRatio.Point125, PanType.Right);
+        var leftChannel = new TriangleSoundChannel(tempo, format, PanType.Left);
+
+        // ISoundComponentを実装したクラスのオブジェクトをチャンネルに追加していく。
+        // 現段階では普通の音符、休符、タイ、連符を使うことができる。
+        rightChannel.Add(new Note(Scale.C, 5, LengthType.Eighth, isDotted: true));
+        rightChannel.Add(new Tie(new Note(Scale.D, 5, LengthType.Eighth), LengthType.Eighth));
+        var notes = new List<BasicSoundComponentBase>()
+        {
+            new Note(Scale.E, 5, LengthType.Eighth),
+            new Note(Scale.F, 5, LengthType.Eighth),
+            new Note(Scale.G, 5, LengthType.Eighth),
+        };
+        rightChannel.Add(new Tuplet(notes, LengthType.Quarter));
+
+        rightChannel2.Add(new Note(Scale.C, 4, LengthType.Eighth, isDotted: true));
+        rightChannel2.Add(new Note(Scale.D, 4, LengthType.Quarter));
+        rightChannel2.Add(new Rest(LengthType.Quarter));
+
+        leftChannel.Add(new Note(Scale.C, 3, LengthType.Eighth, isDotted: true));
+        leftChannel.Add(new Note(Scale.D, 3, LengthType.Quarter));
+        leftChannel.Add(new Rest(LengthType.Quarter));
+
+        var channels = new List<ISoundChannel>() { rightChannel, rightChannel2, leftChannel };
+
+        // ミックスは'StereoMixer'クラスで行う。
+        return new StereoMixer(channels).Mix();
+    }
+
+    private async ValueTask<IJSObjectReference> GetJSModule()
+    {
+        if (this.jsModule == null)
+        {
+            this.jsModule = await this.JSRuntime.InvokeAsync<IJSObjectReference>("import", "./App.razor.js");
+        }
+        return this.jsModule;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (this.jsModule != null) await this.jsModule.DisposeAsync();
+    }
+}
