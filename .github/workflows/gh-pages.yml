@@ -22,7 +22,7 @@ jobs:
 
       # Publish the site
       - name: Publish
-        run: dotnet publish SoundMakerOnWeb/SoundMakerOnWeb.csproj -c:Release -o:public -p:GHPages=true
+        run: dotnet publish SoundMakerOnWeb/SoundMakerOnWeb.csproj -c:Release -o:public -p:RunAOTCompilation=true -p:GHPages=true
 
       # Deploy the site
       - name: Deploy
